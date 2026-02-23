@@ -54,6 +54,16 @@ Auth header for protected APIs:
 Backend runs at:
 - `http://127.0.0.1:8000`
 
+## Deployment Environment Variables (Backend)
+
+- `SECRET_KEY`: strong secret key
+- `DEBUG`: `False` in production
+- `ALLOWED_HOSTS`: comma-separated hostnames (example: `your-backend.onrender.com`)
+- `DATABASE_URL`: PostgreSQL connection URL
+- `CORS_ALLOWED_ORIGINS`: allowed frontend origins
+- `CSRF_TRUSTED_ORIGINS`: trusted frontend origins (with scheme)
+- `SECURE_SSL_REDIRECT`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`: set `True` in production
+
 ## Frontend Setup (Next.js)
 
 ```powershell

@@ -44,12 +44,49 @@ class PaymentAPITests(TestCase):
         refresh = RefreshToken.for_user(self.user)
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
 
-    def test_api_mark_paid(self):
+    def test_customer_submits_payment_for_approval(self):
         response = self.client.post(
             f'/api/payments/{self.payment.id}/mark-paid/',
             data={'method': 'UPI', 'transaction_reference': 'API-REF-1'},
             format='json',
         )
+        self.assertEqual(response.status_code, 202)
+        self.payment.refresh_from_db()
+        self.assertEqual(self.payment.status, 'REQUESTED')
+
+    def test_admin_approves_requested_payment(self):
+        self.payment.status = 'REQUESTED'
+        self.payment.save(update_fields=['status'])
+
+        admin = User.objects.create_user(
+            username='admin_approver',
+            password='SmartSalon@123',
+            role='ADMIN',
+        )
+        admin_refresh = RefreshToken.for_user(admin)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {admin_refresh.access_token}')
+
+        response = self.client.post(
+            f'/api/payments/{self.payment.id}/mark-paid/',
+            data={'method': 'UPI', 'transaction_reference': 'API-REF-2'},
+            format='json',
+        )
         self.assertEqual(response.status_code, 200)
         self.payment.refresh_from_db()
         self.assertEqual(self.payment.status, 'PAID')
+
+    def test_admin_cannot_approve_without_customer_submission(self):
+        admin = User.objects.create_user(
+            username='admin_approver_2',
+            password='SmartSalon@123',
+            role='ADMIN',
+        )
+        admin_refresh = RefreshToken.for_user(admin)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {admin_refresh.access_token}')
+
+        response = self.client.post(
+            f'/api/payments/{self.payment.id}/mark-paid/',
+            data={'method': 'UPI', 'transaction_reference': 'API-REF-3'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)

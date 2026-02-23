@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -132,15 +134,59 @@ class DashboardSummaryAPIView(APIView):
         if user.role == 'CUSTOMER':
             appointments = appointments.filter(customer=user)
 
+        today = timezone.localdate()
+        week_end = today + timedelta(days=7)
+
+        recent_appointments = appointments.select_related('customer', 'staff').order_by('-appointment_datetime')[:6]
+        recent_items = [
+            {
+                'id': appointment.id,
+                'customer': appointment.customer.username,
+                'staff': appointment.staff.username if appointment.staff else appointment.stylist_name,
+                'service': appointment.get_service_display(),
+                'datetime': appointment.appointment_datetime.isoformat(),
+                'status': appointment.status,
+                'status_display': appointment.get_status_display(),
+            }
+            for appointment in recent_appointments
+        ]
+
+        payment_scope = Payment.objects.filter(appointment__in=appointments)
+        requested_payments = payment_scope.filter(status='REQUESTED').count()
+
         data = {
             'appointments_count': appointments.count(),
             'upcoming_count': appointments.filter(
                 status='BOOKED',
                 appointment_datetime__gte=timezone.now(),
             ).count(),
-            'pending_payments': Payment.objects.filter(
-                appointment__in=appointments,
-                status='PENDING',
+            'today_count': appointments.filter(appointment_datetime__date=today).count(),
+            'week_count': appointments.filter(
+                appointment_datetime__date__gte=today,
+                appointment_datetime__date__lt=week_end,
             ).count(),
+            'pending_payments': payment_scope.filter(status__in=['PENDING', 'REQUESTED']).count(),
+            'requested_payments': requested_payments,
+            'recent_appointments': recent_items,
         }
+
+        if user.role == 'ADMIN':
+            staff_load = (
+                Appointment.objects.filter(
+                    status='BOOKED',
+                    appointment_datetime__date=today,
+                    staff__isnull=False,
+                )
+                .values('staff__username')
+                .order_by('staff__username')
+            )
+            load_map = {}
+            for row in staff_load:
+                username = row['staff__username']
+                load_map[username] = load_map.get(username, 0) + 1
+            data['staff_today_load'] = [
+                {'staff': staff_name, 'booked_slots': count}
+                for staff_name, count in load_map.items()
+            ]
+
         return Response(data)

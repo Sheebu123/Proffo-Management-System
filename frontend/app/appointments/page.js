@@ -83,6 +83,10 @@ export default function AppointmentsPage() {
   const handleBook = async (event) => {
     event.preventDefault();
     setError("");
+    if (!form.staff) {
+      setError("Select a staff member first.");
+      return;
+    }
     if (!form.appointment_datetime) {
       setError("Select an available slot first.");
       return;
@@ -125,6 +129,10 @@ export default function AppointmentsPage() {
   };
 
   const canBook = currentUser?.role === "CUSTOMER";
+  const getStaffLabel = (staff) =>
+    staff.first_name || staff.last_name
+      ? `${staff.first_name} ${staff.last_name}`.trim()
+      : staff.username;
 
   return (
     <>
@@ -147,21 +155,6 @@ export default function AppointmentsPage() {
                 <option value="MANICURE">Manicure</option>
                 <option value="PEDICURE">Pedicure</option>
               </select>
-              <select
-                className="rounded-md border border-stone-300 px-3 py-2"
-                value={form.staff}
-                onChange={(event) => handleFormChange("staff", event.target.value)}
-                required
-              >
-                <option value="">Select staff</option>
-                {staffList.map((staff) => (
-                  <option key={staff.id} value={staff.id}>
-                    {staff.first_name || staff.last_name
-                      ? `${staff.first_name} ${staff.last_name}`.trim()
-                      : staff.username}
-                  </option>
-                ))}
-              </select>
               <input
                 type="date"
                 className="rounded-md border border-stone-300 px-3 py-2"
@@ -169,19 +162,53 @@ export default function AppointmentsPage() {
                 onChange={(event) => handleFormChange("date", event.target.value)}
                 required
               />
-              <select
-                className="rounded-md border border-stone-300 px-3 py-2"
-                value={form.appointment_datetime}
-                onChange={(event) => handleFormChange("appointment_datetime", event.target.value)}
-                required
-              >
-                <option value="">Select available slot</option>
-                {availableSlots.map((slot) => (
-                  <option key={slot} value={slot}>
-                    {new Date(slot).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                  </option>
-                ))}
-              </select>
+              <div className="sm:col-span-2">
+                <p className="mb-2 text-sm font-medium text-stone-700">Choose Staff</p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {staffList.map((staff) => {
+                    const isSelected = String(staff.id) === String(form.staff);
+                    return (
+                      <button
+                        key={staff.id}
+                        type="button"
+                        onClick={() => handleFormChange("staff", String(staff.id))}
+                        className={`rounded-md border px-3 py-3 text-sm text-left transition ${
+                          isSelected
+                            ? "border-emerald-700 bg-emerald-700 text-white"
+                            : "border-stone-300 bg-white text-stone-800 hover:border-emerald-400"
+                        }`}
+                      >
+                        {getStaffLabel(staff)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="sm:col-span-2">
+                <p className="mb-2 text-sm font-medium text-stone-700">Choose Available 30-Min Slot</p>
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                  {availableSlots.map((slot) => {
+                    const isSelected = slot === form.appointment_datetime;
+                    return (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => handleFormChange("appointment_datetime", slot)}
+                        className={`rounded-md border px-2 py-3 text-sm font-medium transition ${
+                          isSelected
+                            ? "border-emerald-700 bg-emerald-700 text-white"
+                            : "border-stone-300 bg-white text-stone-800 hover:border-emerald-400"
+                        }`}
+                      >
+                        {new Date(slot).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </button>
+                    );
+                  })}
+                </div>
+                {!availableSlots.length && form.staff && form.date ? (
+                  <p className="mt-2 text-xs text-stone-500">No free slots for selected staff/date.</p>
+                ) : null}
+              </div>
               <input
                 className="rounded-md border border-stone-300 px-3 py-2 sm:col-span-2"
                 placeholder="Notes"

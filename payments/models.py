@@ -10,6 +10,7 @@ class Payment(models.Model):
     )
     STATUS_CHOICES = (
         ('PENDING', 'Pending'),
+        ('REQUESTED', 'Requested For Approval'),
         ('PAID', 'Paid'),
         ('FAILED', 'Failed'),
     )
@@ -32,6 +33,11 @@ class Payment(models.Model):
     def mark_paid(self):
         self.status = 'PAID'
         self.paid_at = timezone.now()
+        self.save(update_fields=['status', 'paid_at'])
+
+    def mark_requested(self):
+        self.status = 'REQUESTED'
+        self.paid_at = None
         self.save(update_fields=['status', 'paid_at'])
 
     def __str__(self):

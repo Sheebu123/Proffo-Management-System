@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import AppHeader from "@/components/AppHeader";
 import { apiRequest } from "@/lib/api";
-import { clearAuth, getAccessToken } from "@/lib/auth";
+import { clearAuth, getAccessToken, getStoredUser } from "@/lib/auth";
 
 export default function PaymentsPage() {
   const router = useRouter();
+  const currentUser = useMemo(() => getStoredUser(), []);
   const [payments, setPayments] = useState([]);
   const [error, setError] = useState("");
 
@@ -32,7 +33,7 @@ export default function PaymentsPage() {
     fetchPayments();
   }, [router]);
 
-  const markPaid = async (paymentId, method = "CASH") => {
+  const updatePaymentStatus = async (paymentId, method = "CASH") => {
     setError("");
     try {
       const token = getAccessToken();
@@ -46,6 +47,48 @@ export default function PaymentsPage() {
     } catch (err) {
       setError(err.message);
     }
+  };
+
+  const renderAction = (payment) => {
+    const role = currentUser?.role;
+
+    if (role === "CUSTOMER") {
+      if (payment.status === "PENDING") {
+        return (
+          <button
+            type="button"
+            className="rounded-md bg-blue-700 px-3 py-1.5 text-xs text-white hover:bg-blue-800"
+            onClick={() => updatePaymentStatus(payment.id, "CARD")}
+          >
+            Submit Payment
+          </button>
+        );
+      }
+      if (payment.status === "REQUESTED") {
+        return <span className="text-xs text-amber-700">Waiting Approval</span>;
+      }
+      return "-";
+    }
+
+    if (role === "ADMIN" || role === "STAFF") {
+      if (payment.status === "REQUESTED") {
+        return (
+          <button
+            type="button"
+            className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs text-white hover:bg-emerald-800"
+            onClick={() => updatePaymentStatus(payment.id, payment.method || "CARD")}
+          >
+            Approve Paid
+          </button>
+        );
+      }
+      if (payment.status === "PENDING") {
+        return <span className="text-xs text-stone-500">Customer not submitted</span>;
+      }
+      return "-";
+    }
+
+    return "-";
   };
 
   return (
@@ -78,19 +121,7 @@ export default function PaymentsPage() {
                   <td className="px-3 py-2">{payment.amount}</td>
                   <td className="px-3 py-2">{payment.method_display}</td>
                   <td className="px-3 py-2">{payment.status_display}</td>
-                  <td className="px-3 py-2">
-                    {payment.status === "PENDING" ? (
-                      <button
-                        type="button"
-                        className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs text-white hover:bg-emerald-800"
-                        onClick={() => markPaid(payment.id, "CARD")}
-                      >
-                        Mark Paid
-                      </button>
-                    ) : (
-                      "-"
-                    )}
-                  </td>
+                  <td className="px-3 py-2">{renderAction(payment)}</td>
                 </tr>
               ))}
               {!payments.length ? (
