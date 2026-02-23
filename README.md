@@ -64,6 +64,24 @@ Backend runs at:
 - `CSRF_TRUSTED_ORIGINS`: trusted frontend origins (with scheme)
 - `SECURE_SSL_REDIRECT`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`: set `True` in production
 
+## Deployment Quick Setup
+
+### Backend (Render/Railway style)
+
+1. Build command:
+   - `pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput`
+2. Start command:
+   - `gunicorn smartsalon_backend.wsgi:application`
+3. Set backend env vars from `.env.example` with production values.
+
+### Frontend (Vercel style)
+
+1. Root directory: `frontend`
+2. Build command: `npm run build`
+3. Start command: `npm start`
+4. Set env:
+   - `NEXT_PUBLIC_API_BASE_URL=https://your-backend-domain`
+
 ## Frontend Setup (Next.js)
 
 ```powershell
