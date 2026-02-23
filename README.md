@@ -1,78 +1,89 @@
 # SmartSalon Appointment System
 
-Django backend for managing salon users, appointments, and payments.
+SmartSalon is a resume-ready full-stack project:
+- Backend: Django + Django REST Framework (JWT Auth)
+- Frontend: Next.js + Tailwind CSS
 
-## What This Project Does
+## Features
 
-- User registration, login, and logout
+- User register/login/logout
+- Role-aware dashboard (Customer/Staff/Admin)
+- Admin can manage staff schedules (date + start/end time)
+- Customer sees only available 30-minute slots per staff/date
 - Appointment booking with future-date validation
-- Double-booking prevention for the same stylist and time slot
-- Appointment listing, filtering, and cancellation
-- One payment record per appointment with mark-as-paid flow
-- Simple dashboard with booking and payment counts
+- Double-booking prevention for same staff and slot
+- Appointment cancellation flow
+- Linked payment per appointment
+- Mark payment as paid
 
-## Tech Stack
+## Architecture
 
-- Python
-- Django
-- SQLite (default for local development)
+- `smartsalon_backend/`: Django project config
+- `accounts/`: custom user model + JWT auth APIs
+- `appointments/`: staff schedule + slot booking APIs
+- `payments/`: payment tracking APIs
+- `frontend/`: Next.js + Tailwind frontend
 
-## Project Structure
+## API Endpoints (Django)
 
-- `smartsalon_backend/`: Django project settings and root URLs
-- `accounts/`: custom user model and account logic
-- `appointments/`: appointment-related models and views
-- `payments/`: payment-related models and views
-- `templates/`: all frontend templates
+- `POST /api/accounts/register/`
+- `POST /api/accounts/login/`
+- `POST /api/accounts/token/refresh/`
+- `POST /api/accounts/logout/`
+- `GET /api/accounts/profile/`
+- `GET /api/dashboard/`
+- `GET /api/staff/`
+- `GET, POST /api/staff-schedules/` (admin create)
+- `GET /api/available-slots/?staff_id=<id>&date=YYYY-MM-DD`
+- `GET, POST /api/appointments/`
+- `POST /api/appointments/<id>/cancel/`
+- `GET /api/payments/`
+- `POST /api/payments/<id>/mark-paid/`
 
-## Main Routes
+Auth header for protected APIs:
+- `Authorization: Bearer <access_token>`
 
-- `/`: home page
-- `/accounts/register/`: register
-- `/accounts/login/`: login
-- `/dashboard/`: user dashboard
-- `/appointments/`: appointment list and filters
-- `/appointments/new/`: create appointment
-- `/payments/`: payment list and payment update
-- `/admin/`: Django admin panel
-
-## Local Setup
-
-1. Create and activate a virtual environment.
-2. Install dependencies:
-
-```powershell
-pip install django python-dotenv
-```
-
-3. Create a `.env` file from `.env.example` and set your secret key:
-
-```env
-SECRET_KEY=your-django-secret-key
-```
-
-4. Run migrations:
+## Backend Setup
 
 ```powershell
-python manage.py makemigrations
-python manage.py migrate
+# from project root
+.\venv\Scripts\python.exe manage.py migrate
+.\venv\Scripts\python.exe manage.py runserver
 ```
 
-5. Start the development server:
+Backend runs at:
+- `http://127.0.0.1:8000`
+
+## Frontend Setup (Next.js)
 
 ```powershell
-python manage.py runserver
+# from project root
+cd frontend
+copy .env.example .env.local
+npm run dev
 ```
 
-## Useful Commands
+Frontend runs at:
+- `http://localhost:3000`
+
+Environment variable:
+- `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000`
+
+## Testing and Quality
 
 ```powershell
-python manage.py check
-python manage.py test
-python manage.py createsuperuser
+# backend
+.\venv\Scripts\python.exe manage.py check
+.\venv\Scripts\python.exe manage.py test
+
+# frontend
+cd frontend
+npm run lint
+npm run build
 ```
 
 ## Notes
 
-- Uses custom auth model: `accounts.User`.
-- Default database is SQLite (`db.sqlite3`).
+- Uses custom user model: `accounts.User`
+- DB: SQLite (`db.sqlite3`)
+- JWT blacklisting tables are migrated via `rest_framework_simplejwt.token_blacklist`
