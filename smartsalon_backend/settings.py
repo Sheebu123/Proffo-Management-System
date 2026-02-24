@@ -77,6 +77,12 @@ DEBUG = env_bool('DEBUG', default=True)
 
 ALLOWED_HOSTS = ['*']
 
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https') #I was getting 400 error
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.onrender.com",
+]
+
 
 # Application definition
 
