@@ -75,7 +75,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'fallback-key-for-development-only')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env_bool('DEBUG', default=True)
 
-ALLOWED_HOSTS = env_list('ALLOWED_HOSTS', default='smartsalon-api.onrender.com')
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
