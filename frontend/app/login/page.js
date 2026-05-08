@@ -23,7 +23,7 @@ export default function LoginPage() {
         data: form,
       });
       setAuth(response.access, response.refresh, response.user);
-      router.push("/dashboard");
+      router.replace("/dashboard");
     } catch (err) {
       setError(err.message);
     } finally {

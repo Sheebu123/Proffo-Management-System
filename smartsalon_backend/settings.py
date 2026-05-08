@@ -10,17 +10,18 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
-from pathlib import Path
 import os
 from datetime import timedelta
-from urllib.parse import urlparse
-from dotenv import load_dotenv
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
-# Load environment variables from .env file
-load_dotenv()
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Prefer the project-local .env so unrelated machine-wide vars do not leak in.
+load_dotenv(BASE_DIR / '.env', override=True)
 
 
 def env_bool(name, default=False):
@@ -37,6 +38,16 @@ def env_list(name, default=''):
     return [item.strip() for item in value.split(',') if item.strip()]
 
 
+def env_int(name, default=0):
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
 def database_config():
     database_url = os.getenv('DATABASE_URL')
     if not database_url:
@@ -47,8 +58,19 @@ def database_config():
 
     parsed = urlparse(database_url)
     scheme = parsed.scheme.lower()
+    query_options = {
+        key: values[-1]
+        for key, values in parse_qs(parsed.query).items()
+        if values
+    }
     if scheme in {'postgres', 'postgresql'}:
-        return {
+        options = {}
+        sslmode = query_options.pop('sslmode', '').strip()
+        if sslmode:
+            options['sslmode'] = sslmode
+        options.update(query_options)
+
+        config = {
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': parsed.path.lstrip('/'),
             'USER': parsed.username or '',
@@ -56,6 +78,9 @@ def database_config():
             'HOST': parsed.hostname or '',
             'PORT': str(parsed.port or ''),
         }
+        if options:
+            config['OPTIONS'] = options
+        return config
     if scheme == 'sqlite':
         db_path = parsed.path if parsed.path else '/db.sqlite3'
         return {
@@ -75,13 +100,34 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'fallback-key-for-development-only')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env_bool('DEBUG', default=True)
 
-ALLOWED_HOSTS = ['*'] #Just for begineer no Security
+render_hostname = os.getenv('RENDER_EXTERNAL_HOSTNAME', '').strip()
+default_allowed_hosts = ['127.0.0.1', 'localhost', 'testserver']
+if render_hostname:
+    default_allowed_hosts.append(render_hostname)
 
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https') #I was getting 400 error
-
-CSRF_TRUSTED_ORIGINS = [
-    "https://*.onrender.com", # this also added for 400
+default_frontend_origins = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'https://smartsalon-appointment-system.vercel.app',
 ]
+default_csrf_origins = [
+    *default_frontend_origins,
+    'https://*.vercel.app',
+]
+
+ALLOWED_HOSTS = env_list('ALLOWED_HOSTS', default=','.join(default_allowed_hosts))
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+CORS_ALLOWED_ORIGINS = env_list('CORS_ALLOWED_ORIGINS', default=','.join(default_frontend_origins))
+CORS_ALLOWED_ORIGIN_REGEXES = env_list('CORS_ALLOWED_ORIGIN_REGEXES')
+CORS_ALLOW_CREDENTIALS = env_bool('CORS_ALLOW_CREDENTIALS', default=False)
+CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS', default=','.join(default_csrf_origins))
+APPEND_SLASH = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = 'same-origin'
+SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin'
+X_FRAME_OPTIONS = 'DENY'
 
 
 # Application definition
@@ -141,6 +187,14 @@ WSGI_APPLICATION = 'smartsalon_backend.wsgi.application'
 DATABASES = {
     'default': database_config()
 }
+DATABASES['default']['CONN_MAX_AGE'] = env_int('DB_CONN_MAX_AGE', 60 if not DEBUG else 0)
+DATABASES['default']['CONN_HEALTH_CHECKS'] = env_bool('DB_CONN_HEALTH_CHECKS', default=not DEBUG)
+if DATABASES['default']['ENGINE'] == 'django.db.backends.postgresql':
+    database_options = DATABASES['default'].setdefault('OPTIONS', {})
+    default_sslmode = 'require' if not DEBUG else ''
+    sslmode = os.getenv('DB_SSLMODE', default_sslmode).strip()
+    if sslmode and 'sslmode' not in database_options:
+        database_options['sslmode'] = sslmode
 
 
 # Password validation
@@ -177,8 +231,9 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+WHITENOISE_MAX_AGE = env_int('WHITENOISE_MAX_AGE', 31536000 if not DEBUG else 0)
 STORAGES = {
     'staticfiles': {
         'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
@@ -199,19 +254,13 @@ REST_FRAMEWORK = {
     ],
 }
 
-CORS_ALLOWED_ORIGINS = [
-    "https://smartsalon-appointment-system.vercel.app",
-]
-
-CSRF_TRUSTED_ORIGINS = [
-    "https://smartsalon-appointment-system.vercel.app",
-]
-
 if not DEBUG:
     SECURE_SSL_REDIRECT = env_bool('SECURE_SSL_REDIRECT', default=True)
     SESSION_COOKIE_SECURE = env_bool('SESSION_COOKIE_SECURE', default=True)
     CSRF_COOKIE_SECURE = env_bool('CSRF_COOKIE_SECURE', default=True)
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_HSTS_SECONDS = env_int('SECURE_HSTS_SECONDS', 31536000)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=True)
+    SECURE_HSTS_PRELOAD = env_bool('SECURE_HSTS_PRELOAD', default=False)
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
@@ -219,4 +268,48 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
+}
+
+DJANGO_LOG_LEVEL = os.getenv('DJANGO_LOG_LEVEL', 'DEBUG' if DEBUG else 'INFO').upper()
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'standard': {
+            'format': '[%(asctime)s] %(levelname)s %(name)s: %(message)s',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'standard',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': DJANGO_LOG_LEVEL,
+    },
+    'loggers': {
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'django.security': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'gunicorn.error': {
+            'handlers': ['console'],
+            'level': DJANGO_LOG_LEVEL,
+            'propagate': False,
+        },
+        'gunicorn.access': {
+            'handlers': ['console'],
+            'level': os.getenv('GUNICORN_ACCESS_LOG_LEVEL', 'INFO').upper(),
+            'propagate': False,
+        },
+    },
 }

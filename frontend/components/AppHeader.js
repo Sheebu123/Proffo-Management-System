@@ -26,7 +26,7 @@ export default function AppHeader() {
       // Ignore logout API errors and clear local session anyway.
     } finally {
       clearAuth();
-      router.push("/login");
+      router.replace("/login");
     }
   };
 

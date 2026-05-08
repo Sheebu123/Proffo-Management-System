@@ -12,19 +12,37 @@ export function getRefreshToken() {
   return window.localStorage.getItem(REFRESH_TOKEN_KEY);
 }
 
-export function setAuth(accessToken, refreshToken, user) {
+export function setTokens(accessToken, refreshToken) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+  if (accessToken) {
+    window.localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+  }
   if (refreshToken) {
     window.localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
   }
+}
+
+export function setStoredUser(user) {
+  if (typeof window === "undefined") return;
   window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+export function setAuth(accessToken, refreshToken, user) {
+  setTokens(accessToken, refreshToken);
+  setStoredUser(user);
 }
 
 export function getStoredUser() {
   if (typeof window === "undefined") return null;
   const user = window.localStorage.getItem(USER_KEY);
-  return user ? JSON.parse(user) : null;
+  if (!user) return null;
+
+  try {
+    return JSON.parse(user);
+  } catch (_) {
+    window.localStorage.removeItem(USER_KEY);
+    return null;
+  }
 }
 
 export function clearAuth() {

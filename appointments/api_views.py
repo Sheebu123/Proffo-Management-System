@@ -1,12 +1,13 @@
 from datetime import timedelta
 
-from django.db.models import Q
+from django.db.models import Count, F, Q
 from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.serializers import UserSerializer
 from payments.models import Payment
 
 from .models import Appointment, StaffSchedule
@@ -155,6 +156,7 @@ class DashboardSummaryAPIView(APIView):
         requested_payments = payment_scope.filter(status='REQUESTED').count()
 
         data = {
+            'user': UserSerializer(user).data,
             'appointments_count': appointments.count(),
             'upcoming_count': appointments.filter(
                 status='BOOKED',
@@ -171,22 +173,15 @@ class DashboardSummaryAPIView(APIView):
         }
 
         if user.role == 'ADMIN':
-            staff_load = (
+            data['staff_today_load'] = list(
                 Appointment.objects.filter(
                     status='BOOKED',
                     appointment_datetime__date=today,
                     staff__isnull=False,
                 )
-                .values('staff__username')
-                .order_by('staff__username')
+                .values(staff=F('staff__username'))
+                .annotate(booked_slots=Count('id'))
+                .order_by('staff')
             )
-            load_map = {}
-            for row in staff_load:
-                username = row['staff__username']
-                load_map[username] = load_map.get(username, 0) + 1
-            data['staff_today_load'] = [
-                {'staff': staff_name, 'booked_slots': count}
-                for staff_name, count in load_map.items()
-            ]
 
         return Response(data)

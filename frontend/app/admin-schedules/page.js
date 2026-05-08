@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import AppHeader from "@/components/AppHeader";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, isAbortError, isAuthError } from "@/lib/api";
 import { clearAuth, getAccessToken, getStoredUser } from "@/lib/auth";
 
 const initialForm = {
@@ -23,10 +23,10 @@ export default function AdminSchedulesPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const loadData = async (token) => {
+  const loadData = async (token, signal) => {
     const [staff, scheduleRows] = await Promise.all([
-      apiRequest("/api/staff/", { token }),
-      apiRequest("/api/staff-schedules/", { token }),
+      apiRequest("/api/staff/", { token, signal }),
+      apiRequest("/api/staff-schedules/", { token, signal }),
     ]);
     setStaffList(staff);
     setSchedules(scheduleRows);
@@ -36,17 +36,35 @@ export default function AdminSchedulesPage() {
     const user = getStoredUser();
     const token = getAccessToken();
     if (!token) {
-      router.push("/login");
+      router.replace("/login");
       return;
     }
     if (!user || user.role !== "ADMIN") {
-      router.push("/dashboard");
+      router.replace("/dashboard");
       return;
     }
-    loadData(token).catch(() => {
-      clearAuth();
-      router.push("/login");
+
+    const controller = new AbortController();
+    let isActive = true;
+
+    loadData(token, controller.signal).catch((err) => {
+      if (isAbortError(err)) {
+        return;
+      }
+      if (isAuthError(err)) {
+        clearAuth();
+        router.replace("/login");
+        return;
+      }
+      if (isActive) {
+        setError(err.message);
+      }
     });
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
   }, [router]);
 
   const handleCreate = async (event) => {
@@ -66,6 +84,11 @@ export default function AdminSchedulesPage() {
       setForm(initialForm);
       await loadData(token);
     } catch (err) {
+      if (isAuthError(err)) {
+        clearAuth();
+        router.replace("/login");
+        return;
+      }
       setError(err.message);
     } finally {
       setLoading(false);

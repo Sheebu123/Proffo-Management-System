@@ -1,1 +1,1 @@
-web: gunicorn smartsalon_backend.wsgi:application
+web: gunicorn --config smartsalon_backend/gunicorn.conf.py smartsalon_backend.wsgi:application

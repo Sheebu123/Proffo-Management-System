@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import AppHeader from "@/components/AppHeader";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, isAbortError, isAuthError } from "@/lib/api";
 import { clearAuth, getAccessToken, getStoredUser } from "@/lib/auth";
 
 export default function PaymentsPage() {
@@ -16,21 +16,40 @@ export default function PaymentsPage() {
   useEffect(() => {
     const token = getAccessToken();
     if (!token) {
-      router.push("/login");
+      router.replace("/login");
       return;
     }
 
+    const controller = new AbortController();
+    let isActive = true;
+
     const fetchPayments = async () => {
       try {
-        const data = await apiRequest("/api/payments/", { token });
+        const data = await apiRequest("/api/payments/", {
+          token,
+          signal: controller.signal,
+        });
         setPayments(data);
-      } catch (_) {
-        clearAuth();
-        router.push("/login");
+      } catch (err) {
+        if (isAbortError(err)) {
+          return;
+        }
+        if (isAuthError(err)) {
+          clearAuth();
+          router.replace("/login");
+          return;
+        }
+        if (isActive) {
+          setError(err.message);
+        }
       }
     };
 
     fetchPayments();
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
   }, [router]);
 
   const updatePaymentStatus = async (paymentId, method = "CASH") => {
@@ -45,6 +64,11 @@ export default function PaymentsPage() {
       const data = await apiRequest("/api/payments/", { token });
       setPayments(data);
     } catch (err) {
+      if (isAuthError(err)) {
+        clearAuth();
+        router.replace("/login");
+        return;
+      }
       setError(err.message);
     }
   };

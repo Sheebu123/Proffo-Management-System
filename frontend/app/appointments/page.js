@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import AppHeader from "@/components/AppHeader";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, isAbortError, isAuthError } from "@/lib/api";
 import { clearAuth, getAccessToken, getStoredUser } from "@/lib/auth";
 
 const initialForm = {
@@ -24,57 +24,122 @@ export default function AppointmentsPage() {
   const [form, setForm] = useState(initialForm);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const canBook = currentUser?.role === "CUSTOMER";
 
-  const loadAppointments = async (token) => {
-    const data = await apiRequest("/api/appointments/", { token });
+  const loadAppointments = async (token, signal) => {
+    const data = await apiRequest("/api/appointments/", { token, signal });
     setAppointments(data);
   };
 
-  const loadStaff = async (token) => {
-    const data = await apiRequest("/api/staff/", { token });
+  const loadStaff = async (token, signal) => {
+    const data = await apiRequest("/api/staff/", { token, signal });
     setStaffList(data);
   };
 
-  const loadAvailableSlots = async (token, staffId, date) => {
+  const loadAvailableSlots = async (token, staffId, date, signal) => {
     if (!staffId || !date) {
       setAvailableSlots([]);
       return;
     }
-    const response = await apiRequest(`/api/available-slots/?staff_id=${staffId}&date=${date}`, { token });
+    const response = await apiRequest(`/api/available-slots/?staff_id=${staffId}&date=${date}`, {
+      token,
+      signal,
+    });
     setAvailableSlots(response.available_slots || []);
   };
 
   useEffect(() => {
     const token = getAccessToken();
     if (!token) {
-      router.push("/login");
+      router.replace("/login");
       return;
     }
 
+    const controller = new AbortController();
+    let isActive = true;
+
     const bootstrap = async () => {
       try {
-        await Promise.all([loadAppointments(token), loadStaff(token)]);
-      } catch (_) {
-        clearAuth();
-        router.push("/login");
-      }
-    };
-    bootstrap();
-  }, [router]);
-
-  const handleFormChange = async (field, value) => {
-    const token = getAccessToken();
-    const next = { ...form, [field]: value };
-    if (field === "staff" || field === "date") {
-      next.appointment_datetime = "";
-      setForm(next);
-      if (token) {
-        try {
-          await loadAvailableSlots(token, next.staff, next.date);
-        } catch (err) {
+        const requests = [loadAppointments(token, controller.signal)];
+        if (canBook) {
+          requests.push(loadStaff(token, controller.signal));
+        }
+        await Promise.all(requests);
+      } catch (err) {
+        if (isAbortError(err)) {
+          return;
+        }
+        if (isAuthError(err)) {
+          clearAuth();
+          router.replace("/login");
+          return;
+        }
+        if (isActive) {
           setError(err.message);
         }
       }
+    };
+    bootstrap();
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [canBook, router]);
+
+  useEffect(() => {
+    if (!canBook) {
+      setAvailableSlots([]);
+      setSlotsLoading(false);
+      return;
+    }
+
+    const token = getAccessToken();
+    if (!token || !form.staff || !form.date) {
+      setAvailableSlots([]);
+      setSlotsLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    let isActive = true;
+    const timeoutId = window.setTimeout(async () => {
+      setSlotsLoading(true);
+      try {
+        await loadAvailableSlots(token, form.staff, form.date, controller.signal);
+      } catch (err) {
+        if (isAbortError(err)) {
+          return;
+        }
+        if (isAuthError(err)) {
+          clearAuth();
+          router.replace("/login");
+          return;
+        }
+        if (isActive) {
+          setError(err.message);
+        }
+      } finally {
+        if (isActive) {
+          setSlotsLoading(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      isActive = false;
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [canBook, form.date, form.staff, router]);
+
+  const handleFormChange = (field, value) => {
+    setError("");
+    const next = { ...form, [field]: value };
+    if (field === "staff" || field === "date") {
+      next.appointment_datetime = "";
+      setAvailableSlots([]);
+      setForm(next);
       return;
     }
     setForm(next);
@@ -108,6 +173,11 @@ export default function AppointmentsPage() {
       setAvailableSlots([]);
       await loadAppointments(token);
     } catch (err) {
+      if (isAuthError(err)) {
+        clearAuth();
+        router.replace("/login");
+        return;
+      }
       setError(err.message);
     } finally {
       setLoading(false);
@@ -124,11 +194,14 @@ export default function AppointmentsPage() {
       });
       await loadAppointments(token);
     } catch (err) {
+      if (isAuthError(err)) {
+        clearAuth();
+        router.replace("/login");
+        return;
+      }
       setError(err.message);
     }
   };
-
-  const canBook = currentUser?.role === "CUSTOMER";
   const getStaffLabel = (staff) =>
     staff.first_name || staff.last_name
       ? `${staff.first_name} ${staff.last_name}`.trim()
@@ -205,7 +278,10 @@ export default function AppointmentsPage() {
                     );
                   })}
                 </div>
-                {!availableSlots.length && form.staff && form.date ? (
+                {slotsLoading ? (
+                  <p className="mt-2 text-xs text-stone-500">Loading available slots...</p>
+                ) : null}
+                {!slotsLoading && !availableSlots.length && form.staff && form.date ? (
                   <p className="mt-2 text-xs text-stone-500">No free slots for selected staff/date.</p>
                 ) : null}
               </div>

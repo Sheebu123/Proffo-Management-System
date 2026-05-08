@@ -32,6 +32,7 @@ SmartSalon is a resume-ready full-stack project:
 - `POST /api/accounts/logout/`
 - `GET /api/accounts/profile/`
 - `GET /api/dashboard/`
+- `GET /health/`
 - `GET /api/staff/`
 - `GET, POST /api/staff-schedules/` (admin create)
 - `GET /api/available-slots/?staff_id=<id>&date=YYYY-MM-DD`
@@ -60,9 +61,15 @@ Backend runs at:
 - `DEBUG`: `False` in production
 - `ALLOWED_HOSTS`: comma-separated hostnames (example: `your-backend.onrender.com`)
 - `DATABASE_URL`: PostgreSQL connection URL
+- `DB_CONN_MAX_AGE`: database connection reuse in seconds (example: `60`)
+- `DB_CONN_HEALTH_CHECKS`: keep long-lived DB connections healthy (`True` in production)
+- `DB_SSLMODE`: set `require` for managed PostgreSQL when needed
 - `CORS_ALLOWED_ORIGINS`: allowed frontend origins
+- `CORS_ALLOWED_ORIGIN_REGEXES`: optional regex list for preview deployments
 - `CSRF_TRUSTED_ORIGINS`: trusted frontend origins (with scheme)
 - `SECURE_SSL_REDIRECT`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`: set `True` in production
+- `WEB_CONCURRENCY`, `GUNICORN_THREADS`, `GUNICORN_TIMEOUT`: Gunicorn tuning for Render
+- `DJANGO_LOG_LEVEL`: application log verbosity (`INFO` recommended in production)
 
 ## Deployment Quick Setup
 
@@ -71,8 +78,10 @@ Backend runs at:
 1. Build command:
    - `pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput`
 2. Start command:
-   - `gunicorn smartsalon_backend.wsgi:application`
+   - `gunicorn --config smartsalon_backend/gunicorn.conf.py smartsalon_backend.wsgi:application`
 3. Set backend env vars from `.env.example` with production values.
+4. Set the health check path to:
+   - `/health/`
 
 ### Frontend (Vercel style)
 
@@ -81,6 +90,7 @@ Backend runs at:
 3. Start command: `npm start`
 4. Set env:
    - `NEXT_PUBLIC_API_BASE_URL=https://your-backend-domain`
+   - `NEXT_PUBLIC_API_TIMEOUT_MS=15000`
 
 ## Frontend Setup (Next.js)
 

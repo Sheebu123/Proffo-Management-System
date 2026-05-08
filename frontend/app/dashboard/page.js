@@ -5,8 +5,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import AppHeader from "@/components/AppHeader";
-import { apiRequest } from "@/lib/api";
-import { clearAuth, getAccessToken, getRefreshToken, getStoredUser, setAuth } from "@/lib/auth";
+import { apiRequest, isAbortError, isAuthError } from "@/lib/api";
+import { clearAuth, getAccessToken, getStoredUser, setStoredUser } from "@/lib/auth";
 
 function StatCard({ title, value, tone = "stone" }) {
   const toneClass =
@@ -33,28 +33,48 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const token = getAccessToken();
-    const refresh = getRefreshToken();
     if (!token) {
-      router.push("/login");
+      router.replace("/login");
       return;
     }
 
+    const controller = new AbortController();
+    let isActive = true;
+
     const loadData = async () => {
       try {
-        const [profile, dashboard] = await Promise.all([
-          apiRequest("/api/accounts/profile/", { token }),
-          apiRequest("/api/dashboard/", { token }),
-        ]);
-        setAuth(token, refresh, profile);
-        setUser(profile);
+        const dashboard = await apiRequest("/api/dashboard/", {
+          token,
+          signal: controller.signal,
+        });
+        if (!isActive) {
+          return;
+        }
+        if (dashboard.user) {
+          setStoredUser(dashboard.user);
+          setUser(dashboard.user);
+        }
         setSummary(dashboard);
-      } catch (_) {
-        clearAuth();
-        router.push("/login");
+      } catch (err) {
+        if (isAbortError(err)) {
+          return;
+        }
+        if (isAuthError(err)) {
+          clearAuth();
+          router.replace("/login");
+          return;
+        }
+        if (isActive) {
+          setError(err.message);
+        }
       }
     };
 
     loadData();
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
   }, [router]);
 
   const role = user?.role;
